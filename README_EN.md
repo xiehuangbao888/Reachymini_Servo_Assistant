@@ -69,7 +69,7 @@ The built-in default is the user's `backup_all_20261120_153857_997605.json` snap
 1. Complete a fresh backup.
 2. Use the built-in settings or click **Load JSON** to load another complete, compatible profile.
 3. Select only the intended servos and click **Generate restore plan**.
-4. Review the current/profile/final IDs and register values. Type `RESTORE`, then click **Restore & verify**.
+4. Review the current/profile/final IDs and register values in the dialog, then click **Confirm restore**. No confirmation text is required. Click **Cancel** or press Esc to close without writing; generate a new plan when ready.
 5. Wait for `RESTORE + VERIFY SUCCESS`. Save the log, power-cycle the servos, and test the robot.
 
 Restore uses matching IDs and models, preserves IDs and baud rate, and checks firmware layout compatibility. It writes configuration, gains, profiles and indirect addresses. It does **not** write Goal Position, Goal Velocity, Goal Current, Goal PWM, LED, indirect data or runtime status. Torque remains OFF. Writes are checked individually and verified again at the end.

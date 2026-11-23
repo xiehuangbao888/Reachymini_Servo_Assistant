@@ -54,13 +54,13 @@
           <div id="targets" class="targets"></div>
           <p class="hint">仅写入勾选的舵机。型号须匹配，当前 ID、档案 ID 和最终 ID 须一致；保留当前总线波特率。</p>
           <button id="make-plan" class="primary full" disabled>生成恢复计划</button>
-          <div id="plan" hidden>
-            <div class="section-divider"></div>
-            <div class="device-heading"><h3>恢复计划</h3><span id="plan-count" class="count"></span></div>
+          <dialog class="id-dialog restore-dialog" id="plan" aria-labelledby="restore-dialog-title">
+            <div class="device-heading"><h2 id="restore-dialog-title">确认恢复舵机参数？</h2><span id="plan-count" class="count"></span></div>
             <div class="table-scroll"><table><thead><tr><th>当前 ID</th><th>档案 ID</th><th>最终 ID</th><th>差异 / 写入</th></tr></thead><tbody id="plan-body"></tbody></table></div>
             <div id="plan-details"></div>
-            <div class="confirm-box"><label for="confirmation">核对上述目标后，输入 <strong>RESTORE</strong> 确认写入</label><div class="confirm-row"><input id="confirmation" autocomplete="off" spellcheck="false" placeholder="RESTORE"><button id="start-restore" class="danger" disabled>恢复并校验</button></div><p>写入开始后请保持供电和连接。完成后 Torque 保持关闭。</p></div>
-          </div>
+            <p class="hint">核对上述目标及参数后，点击“确认恢复”开始写入。请托稳机构，保持供电和连接；完成后 Torque 保持关闭。</p>
+            <div class="button-row"><button id="cancel-restore" class="secondary" autofocus>取消</button><button id="start-restore" class="danger" disabled>确认恢复</button></div>
+          </dialog>
         </section>
 
         <section class="card" id="id-settings">

@@ -480,7 +480,7 @@ class Tool:
         self.require_backup()
         if (payload.get('confirm') != 'RESTORE' or not self.plan or self.plan.get('kind') != 'restore'
                 or payload.get('plan_id') != self.plan['id']):
-            raise ValueError('请核对最新恢复计划并输入 RESTORE。')
+            raise ValueError('请核对最新恢复计划并点击“确认恢复”。')
         plan = copy.deepcopy(self.plan)
         ids = [row['current_id'] for row in plan['rows']]
         self.check_targets(ids)

@@ -1,6 +1,9 @@
 'use strict';
 // Keep translations in this bundle so existing local servers can serve the UI without a restart.
 const EN = {
+  '确认恢复舵机参数？':'Confirm servo settings restore?', '确认恢复':'Confirm restore',
+  '核对上述目标及参数后，点击“确认恢复”开始写入。请托稳机构，保持供电和连接；完成后 Torque 保持关闭。':'Review the targets and settings above, then click “Confirm restore” to write. Support the mechanism and keep power and USB connected. Torque remains OFF when finished.',
+  '请核对最新恢复计划并点击“确认恢复”。':'Review the latest restore plan and click “Confirm restore”.',
   'reachymini舵机调试助手':'reachymini Servo Assistant', 'Reachy Mini 首页':'Reachy Mini home',
   '设备维护':'Device maintenance', '舵机参数恢复':'Servo configuration', '操作流程':'Workflow',
   '连接与扫描':'Connect & scan', '确认串口及舵机 ID':'Check the port and servo IDs',
@@ -147,7 +150,7 @@ async function api(path, payload) {
   return data;
 }
 function localError(error) { clientError = error.message; $('job-message').textContent = tr(clientError); $('job-message').className = 'job-message error'; }
-function invalidatePlan(blockServer = true) { if (blockServer && state?.plan) ignoredPlan = state.plan.id; activePlan = activeIdPlan = null; $('plan').hidden = true; $('id-plan').close(); $('confirmation').value = ''; $('start-restore').disabled = $('change-id').disabled = true; }
+function invalidatePlan(blockServer = true) { if (blockServer && state?.plan) ignoredPlan = state.plan.id; activePlan = activeIdPlan = null; $('plan').close(); $('id-plan').close(); $('start-restore').disabled = $('change-id').disabled = true; }
 async function action(kind, payload = {}) {
   if (locked || (state?.job.status === 'running' && kind !== 'cancel-scan')) return;
   clientError = null;
@@ -184,8 +187,7 @@ function renderButtons() {
   document.querySelector('.upload-label').classList.toggle('disabled', busy);
   $('select-all').disabled = busy || !state.devices.some(eligible);
   $('make-plan').disabled = busy || !state.backup?.valid || !selected.size;
-  $('confirmation').disabled = busy;
-  $('start-restore').disabled = busy || !activePlan || $('confirmation').value !== 'RESTORE';
+  $('start-restore').disabled = busy || !activePlan;
   document.querySelectorAll('#targets input').forEach(n => n.disabled = busy || n.dataset.eligible !== 'true');
 }
 function eligible(d) { return d.supported && state.profiles.some(p => p.id === d.id && p.model === d.model); }
@@ -217,12 +219,10 @@ function renderPlan(plan) {
   if (plan?.kind !== 'restore') plan = null;
   if (plan && (plan.id === ignoredPlan || plan.rows.length !== selected.size || plan.rows.some(row => !selected.has(row.current_id)))) plan = null;
   if (activePlan?.id === plan?.id && planLanguage === language) return;
-  const savedConfirmation = activePlan && activePlan.id === plan?.id ? $('confirmation').value : '';
   planLanguage = language;
   invalidatePlan(false);
   if (!plan) return;
-  activePlan = plan; $('plan').hidden = false;
-  $('confirmation').value = savedConfirmation;
+  activePlan = plan;
   $('plan-count').textContent = tr(plan.rows.length + ' 台 · 保留 ID');
   $('plan-body').replaceChildren(); $('plan-details').replaceChildren();
   plan.rows.forEach(row => {
@@ -234,6 +234,7 @@ function renderPlan(plan) {
     row.items.forEach(item => {const r = el('tr');r.append(el('td',item.name),el('td',item.before),el('td',item.after,item.before !== item.after ? 'changed' : ''));table.append(r);});
     const scroll = el('div',undefined,'table-scroll'); scroll.append(table); details.append(scroll); $('plan-details').append(details);
   });
+  $('plan').showModal();
 }
 function renderIdPlan(plan) {
   if (plan?.kind !== 'id' || plan.id === ignoredPlan || String(plan.current_id) !== $('old-id').value || String(plan.new_id) !== $('new-id').value) plan = null;
@@ -310,8 +311,13 @@ $('change-id').addEventListener('click',() => {
 });
 $('select-all').addEventListener('click',() => {state.devices.filter(eligible).forEach(d => selected.add(d.id));renderDevices();invalidatePlan();renderButtons();});
 $('make-plan').addEventListener('click',() => action('plan',{ids:[...selected]}));
-$('confirmation').addEventListener('input',renderButtons);
-$('start-restore').addEventListener('click',() => {const payload = {plan_id:activePlan?.id,confirm:$('confirmation').value};$('confirmation').value='';action('restore',payload);});
+$('cancel-restore').addEventListener('click',() => {invalidatePlan();renderButtons();});
+$('plan').addEventListener('cancel',event => {event.preventDefault();invalidatePlan();renderButtons();});
+$('start-restore').addEventListener('click',() => {
+  if (!activePlan || locked || state?.job.status === 'running') return;
+  const payload = {plan_id:activePlan.id,confirm:'RESTORE'};
+  invalidatePlan();action('restore',payload);
+});
 $('profile-file').addEventListener('change',async event => {
   const file = event.target.files[0]; if (!file) return;
   try {if(file.size > 1900000) throw new Error('JSON 文件不能超过 1.9 MB。'); const data = JSON.parse(await file.text());invalidatePlan();await action('profile',{name:file.name,data});}
