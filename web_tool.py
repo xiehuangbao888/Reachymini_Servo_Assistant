@@ -17,10 +17,14 @@ import webbrowser
 from dynamixel_sdk import COMM_RX_TIMEOUT
 
 import dynamixel_xl330_backup_restore as core
+from microduck_ports import comports
 
 ROOT = Path(__file__).resolve().parent
 SCAN_TIMEOUT = 8.0
 DEFAULT_PROFILE_SOURCE = 'backup_all_20261120_153857_997605.json'
+ROBOT_TYPES = ('reachymini', 'microduck')
+EXPECTED_IDS = {'reachymini': list(range(10, 19)),
+                'microduck': list(range(10, 15)) + list(range(20, 25)) + list(range(30, 35))}
 
 
 def isolated_scan(port, baud, cancel, timeout=SCAN_TIMEOUT, command=None):
@@ -166,7 +170,10 @@ class DemoBus:
 
 
 class Tool:
-    def __init__(self, demo=False, output_dir=None, bus_factory=None):
+    def __init__(self, demo=False, output_dir=None, bus_factory=None, robot_type='reachymini'):
+        if robot_type not in ROBOT_TYPES:
+            raise ValueError('未知机型。')
+        self.robot_type = robot_type
         self.demo = demo
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.RLock()
@@ -188,6 +195,25 @@ class Tool:
         self.memory[15]['items']['Position P Gain']['value'] = 320
         self.bus_factory = bus_factory or (lambda port, baud: DemoBus(port, baud, self.memory)
                                           if demo else WebBus(port, baud))
+        self.reset_profiles()
+
+    def reset_profiles(self):
+        if self.robot_type == 'microduck':
+            self.profiles = {}
+            self.profile_name = 'Microduck：请导入此机型的备份 JSON'
+        else:
+            data = json.loads((ROOT / 'DYNAMIXEL_XL330_BACKUP.json').read_text(encoding='utf-8-sig'))
+            self.profiles = normalize_backup(data)
+            self.profile_name = DEFAULT_PROFILE_SOURCE + '（内置默认）'
+
+    def do_robot(self, payload):
+        robot_type = payload.get('robot_type')
+        if robot_type not in ROBOT_TYPES:
+            raise ValueError('未知机型。')
+        self.robot_type = robot_type
+        self.do_disconnect({})
+        self.reset_profiles()
+        return '已切换机型，请重新扫描并备份。'
 
     def log(self, *args, **kwargs):
         line = kwargs.get('sep', ' ').join(str(x) for x in args)
@@ -198,7 +224,10 @@ class Tool:
 
     def state(self):
         with self.lock:
-            return copy.deepcopy(dict(demo=self.demo, token=self.token, connection=self.connection,
+            return copy.deepcopy(dict(demo=self.demo, token=self.token, robot_type=self.robot_type,
+                expected_ids=EXPECTED_IDS[self.robot_type],
+                missing_ids=sorted(set(EXPECTED_IDS[self.robot_type]) - self.devices.keys()) if self.connection else [],
+                connection=self.connection,
                 devices=[dict(id=sid, model_number=v[0], model=core.model_name(v[0]), firmware=v[1],
                               supported=v[0] in core.SUPPORTED_MODELS) for sid, v in sorted(self.devices.items())],
                 profiles=[dict(id=sid, model=core.model_name(p['model_number'])) for sid, p in self.profiles.items()],
@@ -206,6 +235,8 @@ class Tool:
 
     def start(self, kind, payload):
         with self.lock:
+            if payload.get('_robot_type', self.robot_type) != self.robot_type:
+                raise ValueError('机型已变化，请刷新页面后重试。')
             if kind == 'cancel-scan':
                 if self.job['status'] != 'running' or self.job['kind'] != 'scan':
                     raise ValueError('当前没有进行中的扫描。')
@@ -215,7 +246,7 @@ class Tool:
             if self.job['status'] == 'running':
                 raise ValueError('已有操作正在执行，请等待结束。')
             if kind not in ('scan', 'backup', 'profile', 'default_profile', 'plan', 'restore',
-                            'id_plan', 'change_id', 'disconnect'):
+                            'id_plan', 'change_id', 'disconnect', 'robot'):
                 raise ValueError('未知操作。')
             self.cancel_scan.clear()
             self.job = dict(status='running', kind=kind, message=(
@@ -309,7 +340,7 @@ class Tool:
             detected = self.checked_scan(bus)
             result = dict(format='dynamixel-xl330-backup', format_version=3,
                 created_at=datetime.now().isoformat(), connection=dict(self.connection, protocol=2.0),
-                servos=[], unsupported_devices=[], demo=self.demo)
+                servos=[], unsupported_devices=[], demo=self.demo, robot_type=self.robot_type)
             for sid, (model, fw) in sorted(detected.items()):
                 if model not in core.SUPPORTED_MODELS:
                     result['unsupported_devices'].append(dict(id=sid, model_number=model, firmware_version=fw))
@@ -329,7 +360,13 @@ class Tool:
 
     def do_profile(self, payload):
         self.plan = None
-        profiles = normalize_backup(payload.get('data'))
+        data = payload.get('data')
+        if not isinstance(data, dict):
+            raise ValueError('参数文件格式无效，需使用原工具导出的 JSON。')
+        # Legacy upstream backups belong to Reachy Mini. Never reuse them for Microduck.
+        if data.get('robot_type', 'reachymini') != self.robot_type:
+            raise ValueError('参数档案机型不匹配，请导入当前机型的备份。')
+        profiles = normalize_backup(data)
         if not self.demo and payload['data'].get('demo'):
             raise ValueError('演示备份不能用于真实硬件。')
         self.profiles = profiles
@@ -337,6 +374,8 @@ class Tool:
         return f'已载入 {len(profiles)} 台舵机参数档案。'
 
     def do_default_profile(self, payload):
+        if self.robot_type != 'reachymini':
+            raise ValueError('Microduck 没有内置恢复参数，请导入 Microduck 备份。')
         data = json.loads((ROOT / 'DYNAMIXEL_XL330_BACKUP.json').read_text(encoding='utf-8-sig'))
         self.do_profile(dict(data=data, name=DEFAULT_PROFILE_SOURCE))
         self.profile_name = DEFAULT_PROFILE_SOURCE + '（内置默认）'
@@ -569,7 +608,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, self.app.state())
         if path == '/api/ports':
             ports = [dict(device='DEMO', description='模拟 U2D2 · 不连接硬件')] if self.app.demo else [
-                dict(device=p.device, description=p.description) for p in core.list_ports.comports()]
+                dict(device=p.device, description=p.description) for p in comports()]
             return self.send(200, ports)
         if path == '/api/logs':
             with self.app.lock:
@@ -603,6 +642,8 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if not path.startswith('/api/'):
                 raise ValueError('未知操作。')
+            if payload.get('_robot_type') != self.app.robot_type:
+                raise ValueError('机型已变化，请刷新页面后重试。')
             self.app.start(path[len('/api/'):], payload)
             self.send(202, dict(ok=True))
         except (ValueError, TypeError) as exc:
@@ -620,9 +661,9 @@ class LocalServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def make_server(port=8765, demo=False):
+def make_server(port=8765, demo=False, robot_type='reachymini'):
     server = LocalServer(('127.0.0.1', port), Handler)
-    server.app = Tool(demo=demo)
+    server.app = Tool(demo=demo, robot_type=robot_type)
     core.print = server.app.log
     return server
 
@@ -630,12 +671,13 @@ def make_server(port=8765, demo=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--demo', action='store_true', help='Use memory only, never connect hardware')
+    parser.add_argument('--robot', choices=ROBOT_TYPES, default='reachymini', help='Initial robot type')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--lang', choices=('zh', 'en'), help='Browser interface language (otherwise use browser preference)')
     args = parser.parse_args()
     try:
-        server = make_server(args.port, args.demo)
+        server = make_server(args.port, args.demo, args.robot)
     except OSError as exc:
         parser.exit(1, f'无法启动本地服务：{exc}\n请关闭占用端口的旧服务，或使用 --port 8767 指定其他端口。\n')
     url = f'http://127.0.0.1:{server.server_port}/' + (f'?lang={args.lang}' if args.lang else '')

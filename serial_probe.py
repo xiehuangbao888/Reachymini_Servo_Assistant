@@ -3,6 +3,7 @@ import json
 import sys
 
 import dynamixel_xl330_backup_restore as core
+from microduck_ports import comports
 
 
 def main():
@@ -10,7 +11,7 @@ def main():
     bus = None
     core.print = lambda *args, **kwargs: None
     try:
-        if port not in {p.device for p in core.list_ports.comports()}:
+        if port not in {p.device for p in comports()}:
             raise ValueError('串口不存在，请刷新串口列表。')
         bus = core.DxlBus(port, baud)
         bus.open()

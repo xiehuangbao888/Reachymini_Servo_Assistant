@@ -22,20 +22,28 @@
   <header class="topbar"><span>设备维护 <span class="slash">/</span> 舵机参数恢复</span><div class="topbar-actions"><label class="language-label" for="language">语言</label><select id="language" aria-label="语言"><option value="zh">中文</option><option value="en">English</option></select><span id="connection-badge" class="badge">未连接</span></div></header>
   <div class="content">
     <div id="demo-banner" class="notice demo" hidden><strong>演示模式</strong> 所有设备和写入均为内存模拟，不会连接串口或更改真实舵机。</div>
-    <div class="page-heading"><div class="eyebrow">seeed studio</div><h1>reachymini舵机调试助手<span class="title-tag">备份 / 恢复</span></h1></div>
-    <div class="notice"><ol class="startup-steps"><li><strong>开始之前，请先关闭 reachymini 的 App 应用程序。</strong></li><li><strong>插入 USB 后，点击“刷新串口”，查看新增的端口，即为我们需要选择的端口。</strong></li><li><strong>在恢复参数和修改舵机 ID 之前，需要先备份原始数据，否则无法进行下一步。</strong></li></ol></div>
+    <div class="page-heading"><div class="eyebrow">seeed studio</div><h1><span id="robot-title">舵机调试助手</span><span class="title-tag">备份 / 恢复</span></h1></div>
+    <div class="notice"><ol class="startup-steps"><li><strong id="robot-startup">开始之前，请先关闭 reachymini 的 App 应用程序。</strong></li><li><strong id="robot-port-help">插入 USB 后，点击“刷新串口”，查看新增的端口，即为我们需要选择的端口。</strong></li><li><strong>在恢复参数和修改舵机 ID 之前，需要先备份原始数据，否则无法进行下一步。</strong></li></ol></div>
 
+    <section class="card robot-selector" aria-labelledby="robot-selector-title">
+      <div><h2 id="robot-selector-title">选择机器人</h2><p class="hint">切换机型后重新扫描；参数档案、备份与写入计划按机型隔离。</p></div>
+      <div class="robot-tabs" role="group" aria-label="机器人机型">
+        <button id="robot-microduck" type="button" aria-pressed="false">Microduck <small>15 个舵机</small></button>
+        <button id="robot-reachymini" type="button" aria-pressed="false">Reachy Mini <small>9 个舵机</small></button>
+      </div>
+      <p id="robot-mode-hint" class="hint"></p>
+    </section>
     <div class="workspace-grid">
       <section class="card connection-card" id="connection">
         <div class="card-heading"><div><span class="step">01</span><h2>连接设备</h2></div><button class="text-button" id="refresh-ports">刷新串口</button></div>
-        <div class="connection-form"><label>U2D2 串口<select id="port"><option value="">正在读取串口…</option></select></label><label>波特率<select id="baudrate"><option>9600</option><option>57600</option><option>115200</option><option selected>1000000</option><option>2000000</option><option>3000000</option><option>4000000</option></select></label></div>
+        <div class="connection-form"><label><span id="port-label">串口</span><select id="port"><option value="">正在读取串口…</option></select></label><label>波特率<select id="baudrate"><option>9600</option><option>57600</option><option>115200</option><option selected>1000000</option><option>2000000</option><option>3000000</option><option>4000000</option></select></label></div>
         <div class="button-row"><button class="primary" id="scan">连接并扫描</button><button class="secondary" id="cancel-scan" hidden>取消扫描</button><button class="secondary" id="disconnect" disabled>断开</button></div>
         <p class="hint">请确认舵机正常供电。默认通信速率为 1,000,000 bps。</p>
         <div class="section-divider"></div>
-        <div class="device-heading"><h3>总线设备</h3><span id="device-count" class="count">0 台</span></div>
+        <p id="inventory-summary" class="hint" role="status"></p><div class="device-heading"><h3>总线设备</h3><span id="device-count" class="count">0 台</span></div>
         <div id="devices-empty" class="empty-state"><span class="empty-icon">⌘</span><strong>等待扫描设备</strong><p>连接后显示实际 ID、型号及固件版本</p></div>
         <div class="table-scroll"><table id="device-table" hidden><thead><tr><th>ID</th><th>舵机位置</th><th>型号</th><th>固件</th><th>状态</th></tr></thead><tbody id="devices-body"></tbody></table></div>
-        <p class="hint">默认对应关系：ID 10 为底座舵机，ID 11～16 分别为舵机 1～6，ID 17 为右天线，ID 18 为左天线。名称按默认 ID 标注，改过 ID 的舵机请结合实际接线确认。</p>
+        <p id="robot-mapping" class="hint">默认对应关系：ID 10 为底座舵机，ID 11～16 分别为舵机 1～6，ID 17 为右天线，ID 18 为左天线。名称按默认 ID 标注，改过 ID 的舵机请结合实际接线确认。</p>
       </section>
 
       <div class="right-column">
@@ -52,7 +60,7 @@
           <div class="target-heading"><h3>恢复目标</h3><button class="text-button" id="select-all" disabled>选择全部匹配项</button></div>
           <div id="targets-empty" class="inline-empty">扫描设备后，在此勾选需要恢复的舵机。</div>
           <div id="targets" class="targets"></div>
-          <p class="hint">仅写入勾选的舵机。型号须匹配，当前 ID、档案 ID 和最终 ID 须一致；保留当前总线波特率。</p>
+          <p id="profile-guidance" class="hint"></p><p class="hint">仅写入勾选的舵机。型号须匹配，当前 ID、档案 ID 和最终 ID 须一致；保留当前总线波特率。</p>
           <button id="make-plan" class="primary full" disabled>生成恢复计划</button>
           <dialog class="id-dialog restore-dialog" id="plan" aria-labelledby="restore-dialog-title">
             <div class="device-heading"><h2 id="restore-dialog-title">确认恢复舵机参数？</h2><span id="plan-count" class="count"></span></div>
