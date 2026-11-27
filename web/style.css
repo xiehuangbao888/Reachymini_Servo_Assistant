@@ -189,3 +189,12 @@ footer{gap:15px;line-height:1.8}
 main{margin-left:0;width:100%}
 }
 
+
+.robot-selector{margin-bottom:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.robot-selector h2{margin:0 0 8px}.robot-selector .hint{margin:0}
+.robot-tabs{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.robot-tabs button{border:1px solid var(--border);border-radius:10px;background:white;padding:12px 20px;color:var(--muted);text-align:left;min-width:165px;font-weight:650}
+.robot-tabs small{display:block;font-size:12px;font-weight:400;margin-top:5px}
+.robot-tabs button[aria-pressed="true"]{background:#e6f6f0;color:var(--mint);border:2px solid var(--mint);padding:11px 19px}
+#robot-mode-hint{flex-basis:100%}#inventory-summary.missing{color:#a24b12;background:#fff4e8;padding:10px;border-radius:6px}
+@media(max-width:600px){.robot-tabs{margin-left:0;width:100%}.robot-tabs button{flex:1;min-width:130px}}

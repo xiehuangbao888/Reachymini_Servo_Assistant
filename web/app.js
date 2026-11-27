@@ -1,6 +1,15 @@
 'use strict';
 // Keep translations in this bundle so existing local servers can serve the UI without a restart.
 const EN = {
+  '选择机器人':'Select robot', '机器人机型':'Robot type', '15 个舵机':'15 servos', '9 个舵机':'9 servos',
+  '切换机型后重新扫描；参数档案、备份与写入计划按机型隔离。':'Rescan after switching. Profiles, backups and write plans are isolated by robot type.',
+  '已切换机型，请重新扫描并备份。':'Robot type changed. Rescan and back up again.',
+  '机型已变化，请刷新页面后重试。':'Robot type changed. Refresh the page and try again.',
+  '参数档案机型不匹配，请导入当前机型的备份。':'Profile robot type does not match. Import a backup for the selected robot.',
+  'Microduck 没有内置恢复参数，请导入 Microduck 备份。':'No built-in Microduck restore profile. Import a Microduck backup.',
+  'Microduck：请导入此机型的备份 JSON':'Microduck: import a backup JSON for this robot type',
+  '未知机型。':'Unknown robot type.',
+
   '确认恢复舵机参数？':'Confirm servo settings restore?', '确认恢复':'Confirm restore',
   '核对上述目标及参数后，点击“确认恢复”开始写入。请托稳机构，保持供电和连接；完成后 Torque 保持关闭。':'Review the targets and settings above, then click “Confirm restore” to write. Support the mechanism and keep power and USB connected. Torque remains OFF when finished.',
   '请核对最新恢复计划并点击“确认恢复”。':'Review the latest restore plan and click “Confirm restore”.',
@@ -133,6 +142,15 @@ function translateStatic() {
 }
 const $ = id => document.getElementById(id);
 function servoName(id) {
+  if (state?.robot_type === 'microduck') {
+    // Official duck-ipc-proto JOINT_IDS / JOINT_NAMES (daemon 0.21.1).
+    const joints = {
+      10:['右髋偏航','Right hip yaw'],11:['右髋侧倾','Right hip roll'],12:['右髋俯仰','Right hip pitch'],13:['右膝','Right knee'],14:['右脚踝','Right ankle'],
+      20:['左髋偏航','Left hip yaw'],21:['左髋侧倾','Left hip roll'],22:['左髋俯仰','Left hip pitch'],23:['左膝','Left knee'],24:['左脚踝','Left ankle'],
+      30:['颈部俯仰','Neck pitch'],31:['头部俯仰','Head pitch'],32:['头部偏航','Head yaw'],33:['头部侧倾','Head roll'],34:['嘴部','Mouth']
+    };
+    return (joints[id] || ['未标注','Unassigned'])[language === 'en' ? 1 : 0];
+  }
   if (id === 10) return '底座舵机';
   if (id >= 11 && id <= 16) return `舵机 ${id - 10}`;
   if (id === 17) return '右天线';
@@ -143,7 +161,7 @@ let state = null, selected = new Set(), activePlan = null, activeIdPlan = null, 
 let renderedLanguage = null, planLanguage = null, idPlanLanguage = null;
 function el(tag, text, className) { const n = document.createElement(tag); if (text !== undefined) n.textContent = tr(text); if (className) n.className = className; return n; }
 async function api(path, payload) {
-  const options = payload === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Tool-Token':state.token}, body:JSON.stringify(payload)};
+  const options = payload === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Tool-Token':state.token}, body:JSON.stringify({...payload, _robot_type:state.robot_type})};
   const response = await fetch('/api/' + path, options);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || '请求失败');
@@ -172,6 +190,7 @@ async function ports() {
 function renderButtons() {
   if (!state) return;
   const busy = locked || state.job.status === 'running', connected = !!state.connection;
+  ['robot-microduck','robot-reachymini'].forEach(id => $(id).disabled = busy);
   ['port','baudrate','refresh-ports'].forEach(id => $(id).disabled = busy);
   $('scan').disabled = busy || !$('port').value;
   $('scan').textContent = tr(connected ? '重新扫描' : '连接并扫描');
@@ -245,14 +264,40 @@ function renderIdPlan(plan) {
   $('id-plan-description').textContent = tr(`ID ${plan.current_id} → ID ${plan.new_id} · ${plan.model} · V${plan.firmware}。关闭 Torque 后仅修改 ID，保持当前波特率及配置参数。`);
   if (!$('id-plan').open) $('id-plan').showModal();
 }
+function renderRobot() {
+  const duck = state.robot_type === 'microduck', en = language === 'en';
+  const name = duck ? 'Microduck' : 'Reachy Mini';
+  document.title = name + (en ? ' Servo Assistant' : ' 舵机调试助手');
+  $('robot-title').textContent = document.title;
+  for (const robot of ['microduck','reachymini']) $('robot-' + robot).setAttribute('aria-pressed', String(state.robot_type === robot));
+  $('port-label').textContent = duck ? (en ? 'Servo bus port' : '舵机总线串口') : tr('U2D2 串口');
+  $('robot-startup').textContent = duck ? (en ? 'Pause robotd before scanning. The Microduck launcher handles this.' : '扫描前需暂停 robotd；Microduck 启动脚本会自动处理。') : tr('开始之前，请先关闭 reachymini 的 App 应用程序。');
+  $('robot-port-help').textContent = duck ? (en ? 'On the face board use /dev/ttyS2 at 1,000,000 bps. Select the adapter port when using an external USB adapter.' : '脸部主板选择 /dev/ttyS2、1000000 bps；外接 USB 转接器时选择实际串口。') : tr('插入 USB 后，点击“刷新串口”，查看新增的端口，即为我们需要选择的端口。');
+  $('robot-mode-hint').textContent = en ? 'Scan, back up, restore settings and change IDs for ' + name + '. Firmware flashing is not supported.' : name + ' 模式：扫描、备份、恢复参数及修改 ID；不包含固件烧录。';
+  $('robot-mapping').textContent = duck ? (en ? 'Expected: right leg 10–14; left leg 20–24; head 30–34. Labels assume original IDs.' : '预期 15 个舵机：右腿 10–14、左腿 20–24、头部 30–34。位置按原始 ID 标注。') : tr('默认对应关系：ID 10 为底座舵机，ID 11～16 分别为舵机 1～6，ID 17 为右天线，ID 18 为左天线。名称按默认 ID 标注，改过 ID 的舵机请结合实际接线确认。');
+  $('profile-guidance').textContent = duck ? (en ? 'Import a Microduck-tagged backup. Reachy Mini defaults cannot be used. A backup records existing settings; it is not a factory reset profile.' : '请导入带 Microduck 机型标记的备份，不能使用 Reachy Mini 默认参数。备份保存的是已有参数，不代表出厂标准。') : (en ? 'Reachy Mini built-in profiles or Reachy Mini backups only.' : '使用 Reachy Mini 内置参数或该机型的备份。');
+  const missing = state.missing_ids || [], expected = state.expected_ids || [];
+  const matched = state.devices.filter(d => expected.includes(d.id)).length;
+  const extra = state.devices.filter(d => !expected.includes(d.id)).map(d => d.id);
+  $('inventory-summary').textContent = !state.connection ? (en ? `Expected ${expected.length} servos. Scan to compare IDs.` : `预期 ${expected.length} 个舵机，扫描后核对 ID。`) :
+    (en ? `Expected IDs found: ${matched}/${expected.length}. Missing: ${missing.join(', ') || 'none'}.` : `预期 ID 已发现 ${matched}/${expected.length}；缺失：${missing.join('、') || '无'}。`) +
+    (extra.length ? (en ? ' Additional IDs: ' : ' 额外 ID：') + extra.join(', ') : '');
+  $('inventory-summary').className = 'hint' + (state.connection && missing.length ? ' missing' : '');
+}
 function render(next) {
   const old = state; state = next;
+  if (old && old.robot_type !== state.robot_type) {
+    selected.clear(); invalidatePlan(false); ignoredPlan = null;
+    $('old-id').value = ''; $('new-id').value = ''; $('baudrate').value = '1000000';
+    if (state.robot_type === 'microduck' && [...$('port').options].some(o => o.value === '/dev/ttyS2')) $('port').value = '/dev/ttyS2';
+  }
+  renderRobot();
   $('demo-banner').hidden = !state.demo;
   $('connection-badge').textContent = state.connection ? `${state.connection.port} · ${state.connection.baudrate.toLocaleString()} bps` : tr('未连接');
   $('connection-badge').className = 'badge' + (state.connection ? ' mint' : '');
   $('profile-name').textContent = language === 'en' ? state.profile_name.replace('（内置默认）',' (built-in default)') : state.profile_name;
   $('profile-count').textContent = tr(state.profiles.length + ' 台参数档案 · 按实际 ID 匹配');
-  if (!old || renderedLanguage !== language || JSON.stringify(old.devices) !== JSON.stringify(state.devices) || JSON.stringify(old.profiles) !== JSON.stringify(state.profiles)) renderDevices();
+  if (!old || old.robot_type !== state.robot_type || renderedLanguage !== language || JSON.stringify(old.devices) !== JSON.stringify(state.devices) || JSON.stringify(old.profiles) !== JSON.stringify(state.profiles)) renderDevices();
   $('backup-badge').textContent = tr(state.backup ? (state.backup.valid ? '已完成' : state.backup.complete ? '需重新备份' : '不完整') : '未备份');
   $('backup-badge').className = 'badge' + (state.backup ? (state.backup.complete ? ' mint' : ' error') : '');
   $('download-backup').hidden = !state.backup;
@@ -267,7 +312,7 @@ function render(next) {
   $('job-message').className = 'job-message ' + (clientError ? 'error' : ['error','success'].includes(state.job.status) ? state.job.status : '');
   const success = state.job.kind === 'restore' && state.job.status === 'success';
   $('result').hidden = !success;
-  if (success) $('result').textContent = tr(state.demo ? '演示恢复与校验已通过。此结果来自模拟设备，没有发生真实硬件写入。' : 'RESTORE + VERIFY SUCCESS。所选舵机参数校验通过，Torque 保持关闭。请断电再上电，在机器人上重新测试 S5 顶部负载表现，并保留备份与日志。');
+  if (success) $('result').textContent = tr(state.demo ? '演示恢复与校验已通过。此结果来自模拟设备，没有发生真实硬件写入。' : 'RESTORE + VERIFY SUCCESS。所选舵机参数校验通过，Torque 保持关闭。请保留备份与日志。');
   $('step-connection').classList.toggle('done',!!state.connection);
   $('step-backup').classList.toggle('done',!!state.backup?.valid);
   $('step-restore').classList.toggle('done',!!state.plan || success);
@@ -294,6 +339,10 @@ async function poll() {
   } catch (error) { localError(new Error('本地服务连接失败，请检查启动窗口。' + error.message)); }
   finally { polling = false; }
 }
+for (const robot of ['microduck','reachymini']) $('robot-' + robot).addEventListener('click', () => {
+  if (state?.robot_type === robot) return;
+  selected.clear(); invalidatePlan(); action('robot', {robot_type:robot});
+});
 $('refresh-ports').addEventListener('click',ports);
 $('cancel-scan').addEventListener('click',() => action('cancel-scan'));
 $('port').addEventListener('change',renderButtons);
