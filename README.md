@@ -1,6 +1,6 @@
-# reachymini 舵机调试助手
+# Reachy Mini / Microduck 舵机调试助手
 
-# reachymini 舵机调试助手
+使用 Microduck 请先阅读 [Microduck 完整使用指南](README_MICRODUCK.md)，包含首次安装、SSH 网页连接、扫描备份、参数恢复、修改 ID 和退出恢复服务。下面的串口与服务示例针对 Reachy Mini。
 
 ## 安装与启动
 
@@ -28,7 +28,7 @@ python -m pip install -r requirements.txt
 python web_tool.py --port 8767
 ```
 
-启动后自动打开浏览器，输入地址为 [http://127.0.0.1:8765](http://127.0.0.1:8765)。
+启动后自动打开浏览器，输入地址为 [http://127.0.0.1:8767](http://127.0.0.1:8767)。
 
 ### 无线版reachymini：
 
