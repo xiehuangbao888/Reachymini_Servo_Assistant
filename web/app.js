@@ -6,8 +6,8 @@ const EN = {
   '已切换机型，请重新扫描并备份。':'Robot type changed. Rescan and back up again.',
   '机型已变化，请刷新页面后重试。':'Robot type changed. Refresh the page and try again.',
   '参数档案机型不匹配，请导入当前机型的备份。':'Profile robot type does not match. Import a backup for the selected robot.',
-  'Microduck 没有内置恢复参数，请导入 Microduck 备份。':'No built-in Microduck restore profile. Import a Microduck backup.',
-  'Microduck：请导入此机型的备份 JSON':'Microduck: import a backup JSON for this robot type',
+  '使用内置参数':'Use built-in profile',
+  '已载入 Microduck 2.json 内置参数，尚未写入舵机。':'Loaded the built-in Microduck 2.json profile. No servo settings have been written.',
   '未知机型。':'Unknown robot type.',
 
   '确认恢复舵机参数？':'Confirm servo settings restore?', '确认恢复':'Confirm restore',
@@ -199,6 +199,7 @@ function renderButtons() {
   $('disconnect').disabled = busy || !connected;
   $('backup-all').disabled = busy || !connected;
   $('profile-file').disabled = busy;
+  $('default-profile').disabled = busy;
   ['old-id','new-id'].forEach(id => $(id).disabled = busy);
   const oldId = Number($('old-id').value), newId = Number($('new-id').value);
   $('make-id-plan').disabled = busy || !state.backup?.valid || $('old-id').value === '' || $('new-id').value === '' || !Number.isInteger(newId) || newId < 0 || newId > 252 || oldId === newId || state.devices.some(d => d.id === newId);
@@ -275,7 +276,7 @@ function renderRobot() {
   $('robot-port-help').textContent = duck ? (en ? 'On the face board use /dev/ttyS2 at 1,000,000 bps. Select the adapter port when using an external USB adapter.' : '脸部主板选择 /dev/ttyS2、1000000 bps；外接 USB 转接器时选择实际串口。') : tr('插入 USB 后，点击“刷新串口”，查看新增的端口，即为我们需要选择的端口。');
   $('robot-mode-hint').textContent = en ? 'Scan, back up, restore settings and change IDs for ' + name + '. Firmware flashing is not supported.' : name + ' 模式：扫描、备份、恢复参数及修改 ID；不包含固件烧录。';
   $('robot-mapping').textContent = duck ? (en ? 'Expected: right leg 10–14; left leg 20–24; head 30–34. Labels assume original IDs.' : '预期 15 个舵机：右腿 10–14、左腿 20–24、头部 30–34。位置按原始 ID 标注。') : tr('默认对应关系：ID 10 为底座舵机，ID 11～16 分别为舵机 1～6，ID 17 为右天线，ID 18 为左天线。名称按默认 ID 标注，改过 ID 的舵机请结合实际接线确认。');
-  $('profile-guidance').textContent = duck ? (en ? 'Import a Microduck-tagged backup. Reachy Mini defaults cannot be used. A backup records existing settings; it is not a factory reset profile.' : '请导入带 Microduck 机型标记的备份，不能使用 Reachy Mini 默认参数。备份保存的是已有参数，不代表出厂标准。') : (en ? 'Reachy Mini built-in profiles or Reachy Mini backups only.' : '使用 Reachy Mini 内置参数或该机型的备份。');
+  $('profile-guidance').textContent = duck ? (en ? 'Built-in 2.json: duck-6f11 after OS v1.4.2, 15 servos; Current Limit 1000, Position P Gain 200 (raw values). This is a reference backup, not factory settings or firmware. Back up this robot and review the restore plan before writing.' : '内置 2.json 来自 duck-6f11 升级 OS v1.4.2 后的 15 舵机备份：电流上限 1000、位置 P 增益 200（原始值）。它是参考参数，不代表出厂标准或固件；恢复前请备份当前鸭子并核对计划。') : (en ? 'Reachy Mini built-in profiles or Reachy Mini backups only.' : '使用 Reachy Mini 内置参数或该机型的备份。');
   const missing = state.missing_ids || [], expected = state.expected_ids || [];
   const matched = state.devices.filter(d => expected.includes(d.id)).length;
   const extra = state.devices.filter(d => !expected.includes(d.id)).map(d => d.id);
@@ -349,6 +350,7 @@ $('port').addEventListener('change',renderButtons);
 $('scan').addEventListener('click',() => {selected.clear();invalidatePlan();action('scan',{port:$('port').value,baudrate:Number($('baudrate').value)});});
 $('disconnect').addEventListener('click',() => {selected.clear();invalidatePlan();action('disconnect');});
 $('backup-all').addEventListener('click',() => action('backup'));
+$('default-profile').addEventListener('click',() => {selected.clear();invalidatePlan();action('default_profile');});
 ['old-id','new-id'].forEach(id => $(id).addEventListener('input',() => {invalidatePlan();renderButtons();}));
 $('make-id-plan').addEventListener('click',() => {invalidatePlan();action('id_plan',{old_id:Number($('old-id').value),new_id:Number($('new-id').value)});});
 $('cancel-id-change').addEventListener('click',() => {invalidatePlan();renderButtons();});

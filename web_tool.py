@@ -22,6 +22,8 @@ from microduck_ports import comports
 ROOT = Path(__file__).resolve().parent
 SCAN_TIMEOUT = 8.0
 DEFAULT_PROFILE_SOURCE = 'backup_all_20261120_153857_997605.json'
+MICRODUCK_PROFILE_FILE = 'MICRODUCK_BACKUP_2.json'
+MICRODUCK_PROFILE_SOURCE = 'Microduck 2.json · duck-6f11 · OS v1.4.2'
 ROBOT_TYPES = ('reachymini', 'microduck')
 EXPECTED_IDS = {'reachymini': list(range(10, 19)),
                 'microduck': list(range(10, 15)) + list(range(20, 25)) + list(range(30, 35))}
@@ -198,13 +200,7 @@ class Tool:
         self.reset_profiles()
 
     def reset_profiles(self):
-        if self.robot_type == 'microduck':
-            self.profiles = {}
-            self.profile_name = 'Microduck：请导入此机型的备份 JSON'
-        else:
-            data = json.loads((ROOT / 'DYNAMIXEL_XL330_BACKUP.json').read_text(encoding='utf-8-sig'))
-            self.profiles = normalize_backup(data)
-            self.profile_name = DEFAULT_PROFILE_SOURCE + '（内置默认）'
+        self.do_default_profile({})
 
     def do_robot(self, payload):
         robot_type = payload.get('robot_type')
@@ -374,12 +370,14 @@ class Tool:
         return f'已载入 {len(profiles)} 台舵机参数档案。'
 
     def do_default_profile(self, payload):
-        if self.robot_type != 'reachymini':
-            raise ValueError('Microduck 没有内置恢复参数，请导入 Microduck 备份。')
-        data = json.loads((ROOT / 'DYNAMIXEL_XL330_BACKUP.json').read_text(encoding='utf-8-sig'))
-        self.do_profile(dict(data=data, name=DEFAULT_PROFILE_SOURCE))
-        self.profile_name = DEFAULT_PROFILE_SOURCE + '（内置默认）'
-        return '已切回 2026-11-20 15:38 的默认恢复参数。'
+        duck = self.robot_type == 'microduck'
+        filename = MICRODUCK_PROFILE_FILE if duck else 'DYNAMIXEL_XL330_BACKUP.json'
+        source = MICRODUCK_PROFILE_SOURCE if duck else DEFAULT_PROFILE_SOURCE
+        data = json.loads((ROOT / filename).read_text(encoding='utf-8-sig'))
+        self.do_profile(dict(data=data, name=source))
+        self.profile_name = source + '（内置默认）'
+        return ('已载入 Microduck 2.json 内置参数，尚未写入舵机。' if duck
+                else '已切回 2026-11-20 15:38 的默认恢复参数。')
 
     def require_backup(self):
         if not self.backup or not self.backup['complete'] or not self.backup.get('valid'):

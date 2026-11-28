@@ -28,7 +28,7 @@ class RobotModeTests(unittest.TestCase):
     def switch(self):
         self.tool.do_robot(dict(robot_type='microduck'))
 
-    def test_switch_clears_connection_backup_profile_and_old_plan(self):
+    def test_switch_clears_connection_backup_and_old_plan_loads_robot_profile(self):
         self.scan()
         self.tool.do_backup({})
         self.tool.do_id_plan(dict(old_id=15, new_id=20))
@@ -38,12 +38,12 @@ class RobotModeTests(unittest.TestCase):
         self.assertIsNone(self.tool.backup)
         self.assertIsNone(self.tool.plan)
         self.assertEqual(self.tool.devices, {})
-        self.assertEqual(self.tool.profiles, {})
+        self.assertEqual(set(self.tool.profiles), set(web.EXPECTED_IDS['microduck']))
         with self.assertRaises(ValueError):
             self.tool.do_change_id(plan)
         self.assertEqual(self.bus.writes, [])
 
-    def test_microduck_rejects_reachy_profiles_and_builtin_defaults(self):
+    def test_microduck_rejects_reachy_profiles_and_loads_own_defaults(self):
         data = json.loads((web.ROOT / 'DYNAMIXEL_XL330_BACKUP.json').read_text())
         self.switch()
         for tag in (None, 'reachymini'):
@@ -51,9 +51,11 @@ class RobotModeTests(unittest.TestCase):
             if tag: incoming['robot_type'] = tag
             with self.assertRaisesRegex(ValueError, '机型不匹配'):
                 self.tool.do_profile(dict(data=incoming))
-        with self.assertRaises(ValueError):
-            self.tool.do_default_profile({})
-        self.assertEqual(self.tool.profiles, {})
+        self.tool.do_default_profile({})
+        self.assertIn('2.json', self.tool.profile_name)
+        self.assertTrue(all(p['items']['Current Limit']['value'] == 1000
+                            for p in self.tool.profiles.values()))
+        self.assertEqual(set(self.tool.profiles), set(web.EXPECTED_IDS['microduck']))
         self.assertEqual(self.bus.writes, [])
 
     def test_microduck_tagged_backup_restore_and_id_change_in_memory(self):
@@ -74,6 +76,33 @@ class RobotModeTests(unittest.TestCase):
         self.tool.do_change_id(dict(plan_id=self.tool.plan['id'], confirm='CHANGE 15 TO 20'))
         self.assertIn(20, self.tool.devices)
         self.assertNotIn(15, self.tool.devices)
+
+    def test_builtin_profile_requires_backup_and_confirmation_and_excludes_runtime(self):
+        self.switch()
+        memory = copy.deepcopy(self.tool.profiles)
+        del memory[24]
+        for servo in memory.values():
+            servo['items']['Current Limit']['value'] = 1750
+            servo['items']['Position P Gain']['value'] = 400
+        self.bus = RecordingBus(memory)
+        self.scan()
+        with self.assertRaisesRegex(ValueError, '备份'):
+            self.tool.do_plan(dict(ids=[10]))
+        self.tool.do_backup({})
+        with self.assertRaises(ValueError):
+            self.tool.do_plan(dict(ids=[24]))
+        self.tool.do_plan(dict(ids=[10]))
+        items = {x['name']: x for x in self.tool.plan['rows'][0]['items']}
+        self.assertEqual((items['Current Limit']['before'], items['Current Limit']['after']), (1750, 1000))
+        self.assertEqual((items['Position P Gain']['before'], items['Position P Gain']['after']), (400, 200))
+        self.assertNotIn('Goal Current', items)
+        self.assertNotIn('Goal Position', items)
+        self.assertNotIn('Hardware Error Status', items)
+        with self.assertRaises(ValueError):
+            self.tool.do_restore(dict(plan_id=self.tool.plan['id']))
+        self.tool.do_default_profile({})
+        self.assertIsNone(self.tool.plan)
+        self.assertEqual(self.bus.writes, [])
 
     def test_missing_ids_match_selected_robot(self):
         self.switch()
