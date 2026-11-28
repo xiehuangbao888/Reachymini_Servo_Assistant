@@ -4,6 +4,15 @@
 
 本工具支持扫描、读取控制表、JSON 备份、恢复参数和修改 ID。**“恢复参数”不是刷写舵机固件，也不是更新 Microduck OS 或安装跑步策略。** 系统升级包 `.raucb`、策略文件 `.onnx` 都不能导入这里。
 
+> [!WARNING]
+> **扫描前必须先暂停目标鸭子的 `robotd` 舵机控制服务！**
+>
+> `robotd` 与本助手会使用同一个板载串口 `/dev/ttyS2`。同时运行可能导致扫描超时、漏检、读取失败或写入校验失败。**仅连接 SSH、打开网页、切换 Microduck 模式，或按遥控器停止走路，都不等于停止该服务。**
+>
+> 先平放或可靠支撑鸭子，再按下方“扫描前必须完成的服务检查”确认。手动运行 `web_tool.py` 不会自动停止 `robotd`；只有此前另行部署的 `start-web.sh` 包含服务切换逻辑。
+>
+> 用完必须先退出助手、确认串口不再被占用，再恢复 `robotd`。关闭网页标签页或点击网页“断开”，均不会自动恢复服务。恢复服务可能使关节重新上力。
+
 ## 目录
 
 - [1. 使用前准备](#1-使用前准备)
@@ -26,6 +35,45 @@
 推荐方式：**助手运行在鸭子上，电脑通过 SSH 隧道打开网页。** 鸭子上的 Python 程序访问 `/dev/ttyS2`，电脑负责显示界面。仅在电脑上启动网页，不能隔着 Wi-Fi 读取鸭子的板载串口。
 
 也可以在电脑上运行助手，通过外接、兼容的 DYNAMIXEL TTL 串口适配器检测独立舵机。这时选择适配器的真实串口，并按硬件要求供电，不使用 `/dev/ttyS2`；不要同时让鸭子主板和外部适配器驱动同一总线。
+
+### 扫描前必须完成的服务检查
+
+这里的“停止舵机服务”是**临时停止 `robotd` 控制进程**，不是关闭 SSH、关闭 Wi-Fi、给鸭子断电，也不是永久禁用开机启动。维护时鸭子仍须正常供电；不要为此执行 `systemctl disable` 或 `mask`。
+
+**先确认执行位置：下列命令必须在目标鸭子的 SSH 终端执行，不是在电脑或训练服务器上执行。** 两只鸭子要分别检查各自的服务状态。
+
+1. 先平放或可靠支撑鸭子，记录服务原状态：
+
+   ```bash
+   systemctl is-active robotd
+   ```
+
+2. 根据启动方式处理：
+   - **使用此前部署的 `start-web.sh`**：脚本会暂停 `robotd`。助手启动后，可另开一个连接同一只鸭子的 SSH 终端，执行第 3 步确认。
+   - **直接运行 `python web_tool.py` 或 `python launch.py`**：程序本身不管理 `robotd`，必须先手动停止：
+
+     ```bash
+     sudo systemctl stop robotd
+     ```
+
+3. 在点击“连接并扫描”前确认：
+
+   ```bash
+   systemctl is-active robotd
+   ```
+
+   预期输出为 **`inactive`**。该命令在服务停止时返回非零退出码是正常行为，不代表停止操作失败。若仍为 `active`、`activating` 或 `deactivating`，先不要扫描，等待停止完成或排查服务为何重新启动。
+
+   如果显示 `failed`、`unknown` 或找不到服务，不要简单当作检查通过；先核对服务名、当前固件和日志：
+
+   ```bash
+   systemctl status robotd --no-pager
+   journalctl -u robotd -n 50 --no-pager
+   ```
+
+4. 确认其他舵机调试程序也已退出，再进行扫描。`robotd` 为 `inactive` 只能确认这个服务已停止，不能证明所有串口使用者都已退出。调试期间不要重新启动控制服务、运行其他串口程序或操作遥控器。
+
+5. 用完按第 8 节正常退出助手，再恢复原先运行的 `robotd`。即使只扫描和备份、没有写入参数，也需要恢复服务，才能回到正常机器人控制状态。若服务原本因维修而停用，应保持原状态，待维修结束再启动。
 
 ### 准备事项
 
@@ -173,6 +221,12 @@ ls -l /dev/ttyS2
 ```bash
 systemctl is-active robotd
 sudo systemctl stop robotd
+systemctl is-active robotd
+```
+
+确认输出为 `inactive` 后，再执行：
+
+```bash
 cd /var/lib/robot/tools/servo-assistant
 ./venv/bin/python app/web_tool.py --robot microduck --no-browser --lang zh --port 8767
 ```
@@ -193,6 +247,11 @@ ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
 服务只监听鸭子本机 `127.0.0.1`，因此不要直接访问 `http://鸭子IP:8767`。`--port` 是网页端口，与 SSH 的 22 端口、串口波特率是三回事。本指南显式指定 8767；程序不带 `--port` 时默认是 8765。
 
 ## 4. 连接与扫描
+
+> [!IMPORTANT]
+> **点击“连接并扫描”之前，再确认目标鸭子的 `systemctl is-active robotd` 输出为 `inactive`。**
+> 使用手动启动方式时须先执行 `sudo systemctl stop robotd`；使用既有启动脚本时也应核对停止结果。
+> 网页不会自动检查或停止该服务。若服务仍在运行，先处理服务占用，不要反复扫描或尝试恢复参数。
 
 1. 在“选择机器人”中点击 **Microduck**，确认页面提示预期 15 个舵机。
 2. 点击“刷新串口”，选择 **`/dev/ttyS2`**。
